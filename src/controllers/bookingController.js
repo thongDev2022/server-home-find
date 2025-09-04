@@ -41,7 +41,7 @@ export default class bookingController {
 
       if (isNaN(start) || isNaN(end) || end <= start) {
         return res
-          .start(STATUS.BAD_REQUEST)
+          .status(STATUS.BAD_REQUEST)
           .json({ messaege: "Invalid date range" });
       }
 
@@ -170,7 +170,7 @@ export default class bookingController {
         where: { id: bookingId },
         data: { status: status },
       });
-      res.status(STATUS.CREATED).json({
+      res.status(STATUS.OK).json({
         success: true,
         messaege: "Update booking status successfully",
         data:  updateStatus ,
@@ -194,7 +194,7 @@ export default class bookingController {
         where: { id: bookingId },
         data: { status: cancel },
       });
-      res.status(STATUS.CREATED).json({
+      res.status(STATUS.OK).json({
         success: true,
         messaege: "Booking cancelled",
         data:  cancelStatus ,

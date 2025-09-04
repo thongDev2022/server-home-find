@@ -5,7 +5,7 @@ import { authCheck } from "../middleware/authCheck.js";
 const router = express.Router();
 
 router.get("/user/selectAll", authCheck, userController.getAllUsers);
-router.get("/user/selectOne/:id", authCheck, userController.selectOneUser);
+router.get("/user/selectOne/:id", authCheck, userController.getOneUser);
 router.put("/user/updateProfile",authCheck, userController.updateProfile);
 router.delete("/user/delete/:id",authCheck, userController.deleteUser);
 router.put("/user/forget",authCheck, userController.forgetPassword);

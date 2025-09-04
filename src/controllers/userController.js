@@ -35,7 +35,7 @@ export default class userController {
   }
 
   // Select one user method
-  static async selectOneUser(req, res) {
+  static async getOneUser(req, res) {
     try {
       //code
       const user_id = req.params.id;

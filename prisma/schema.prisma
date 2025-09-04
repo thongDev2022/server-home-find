@@ -96,6 +96,7 @@ model Image {
 enum Role {
   user
   admin
+  owner
 }
 
 enum ApartmentStatus {
