@@ -1,19 +1,18 @@
 import STATUS from "../service/statusCodes.js";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../service/prismaClient.js";
 
 export default class bookingController {
-  static async isApartmentAvailable(apartmentId, startDate, endDate) {
-    const prisma = new PrismaClient();
+  static async isPropertyAvailable(propertyId, checkInDate, checkOutDate) {
     const bookings = await prisma.booking.findMany({
       where: {
-        apartmentId: apartmentId,
+        propertyId: propertyId,
         OR: [
           {
-            startDate: {
-              lte: endDate,
+            checkIn: {
+              lte: checkInDate,
             },
-            endDate: {
-              gte: startDate,
+            checkOut: {
+              gte: checkOutDate,
             },
           },
         ],
@@ -24,104 +23,115 @@ export default class bookingController {
 
   static async createBooking(req, res) {
     try {
-      //code
-      const { apartmentId, startDate, endDate } = req.body;
-      //validate input
-      if (!startDate)
-        return res
-          .status(STATUS.BAD_REQUEST)
-          .json({ message: "startDate is required" });
-      if (!endDate)
-        return res
-          .status(STATUS.BAD_REQUEST)
-          .json({ messaege: "endDate is required" });
+      const { propertyId, checkIn, checkOut } = req.body;
 
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-
-      if (isNaN(start) || isNaN(end) || end <= start) {
+      // 🧭 Validate input
+      if (!propertyId) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+      if (!checkIn || !checkOut) {
         return res
-          .status(STATUS.BAD_REQUEST)
-          .json({ messaege: "Invalid date range" });
+          .status(400)
+          .json({ message: "checkIn and checkOut are required" });
       }
 
-      const prisma = new PrismaClient();
-      const apartment = await prisma.apartment.findUnique({
-        where: { id: Number(apartmentId) },
+      const checkInDate = new Date(checkIn);
+      const checkOutDate = new Date(checkOut);
+
+      if (isNaN(checkInDate) || isNaN(checkOutDate)) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+      if (checkOutDate <= checkInDate) {
+        return res
+          .status(400)
+          .json({ message: "checkOut must be after checkIn" });
+      }
+
+      // 🏠 Check property existence
+      const property = await prisma.property.findUnique({
+        where: { id: propertyId },
       });
-      if (!apartment) {
-        return res
-          .status(STATUS.NOT_FOUND)
-          .json({ message: "Apartment not found" });
-      }
-      if (apartment.status !== "available") {
-        return res
-          .status(STATUS.BAD_REQUEST)
-          .json({ message: "Apartment is not available for booking" });
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
       }
 
-      // Check if the booking dates overlap with existing
-      const isAvailable = await bookingController.isApartmentAvailable(
-        apartmentId,
-        start,
-        end
+      if (property.status !== "AVAILABLE") {
+        return res
+          .status(400)
+          .json({ message: "Property is not available for booking" });
+      }
+
+      // 📅 Check availability (no overlapping)
+      const isAvailable = await bookingController.isPropertyAvailable(
+        propertyId,
+        checkInDate,
+        checkOutDate
       );
+
       if (!isAvailable) {
-        return res.status(STATUS.BAD_REQUEST).json({
-          message: "Apartment is already booked for the selected dates",
+        return res.status(400).json({
+          message: "Property is already booked for the selected dates",
         });
       }
 
+      // 💰 Calculate total price (by months or days)
       const months =
-        (end.getFullYear() - start.getFullYear()) * 12 +
-        (end.getMonth() - start.getMonth());
-      // const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-      const totalPrice = months * apartment.priceBooking;
+        (checkOutDate.getFullYear() - checkInDate.getFullYear()) * 12 +
+        (checkOutDate.getMonth() - checkInDate.getMonth());
 
-      // Create the booking
+      const totalPrice =
+        months > 0 ? months * property.rentPrice : property.rentPrice;
+
+      // 🧾 Create booking
       const booking = await prisma.booking.create({
         data: {
-          userId: req.user.userId,
-          apartmentId: parseInt(apartmentId),
-          startDate: start,
-          endDate: end,
-          totalPrice: parseFloat(totalPrice),
+          userId: req.user.id,
+          propertyId,
+          checkIn: checkInDate,
+          checkOut: checkOutDate,
+          totalPrice,
         },
       });
 
-      const updateApartmentStatus = await prisma.apartment.update({
-        where: { id: Number(apartmentId) },
-        data: { status: "booked" },
+      // 🏡 Update property status
+      await prisma.property.update({
+        where: { id: propertyId },
+        data: { status: "BOOKED" },
       });
-      // res.status(STATUS.OK).json(updateApartmentStatus)
 
-      res.status(STATUS.CREATED).json({
+      return res.status(201).json({
         success: true,
-        messaege: "Created booking successfully",
-        data: { booking },
+        message: "Created booking successfully",
+        booking,
       });
     } catch (err) {
-      console.log(err);
-      res.status(STATUS.INTERNAL_SERVER_ERROR).json("Server Error");
+      console.error("Create booking error:", err);
+      return res
+        .status(500)
+        .json({ message: "Server error", error: err.message });
     }
   }
 
   static async getAllBookings(req, res) {
     try {
-      const prisma = new PrismaClient();
       const bookings = await prisma.booking.findMany({
         include: {
-          apartment: true,
-          apartment: { include: { category: true } },
+          property: true,
+          property: { include: { propertyType: true } },
           user: {
-            select: { user_id: true, username: true, email: true, phoneNumber: true },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
           },
         },
       });
       res.status(STATUS.OK).json({
         success: true,
         message: "Get all bookings successfully",
-        data: { bookings },
+        bookings,
       });
     } catch (err) {
       console.log(err);
@@ -133,25 +143,23 @@ export default class bookingController {
 
   static async getMyBooking(req, res) {
     try {
-      const userId = req.user.userId;
-      const prisma = new PrismaClient();
+      const userId = req.user.id;
+      console.log("userId: ", userId);
       const myBooking = await prisma.booking.findFirst({
         where: { userId: userId },
-        include: { apartment: true },
+        include: { property: true },
         orderBy: { createdAt: "desc" },
       });
 
       if (!myBooking)
-        return res.status(STATUS.NOT_FOUND).json({
-          success: false,
-          messaege: "My booking not found",
-          data: null,
-        });
+        return res
+          .status(STATUS.NOT_FOUND)
+          .json({ messaege: "My booking not found" });
 
       res.status(STATUS.OK).json({
         success: true,
         messaege: "Get my booking successfullly",
-        data: { myBooking },
+        myBooking,
       });
     } catch (err) {
       console.log(err);
@@ -163,17 +171,18 @@ export default class bookingController {
 
   static async updateBookingStatus(req, res) {
     try {
-      const bookingId = Number(req.params.id);
-      const { status } = req.body;
-      const prisma = new PrismaClient();
-      const updateStatus = await prisma.booking.update({
+      const bookingId = req.params.id;
+      const { newStatus } = req.body;
+      // console.log("bookingId: ", bookingId);
+      // console.log("newStatus: ", newStatus);
+      const status = await prisma.booking.update({
         where: { id: bookingId },
-        data: { status: status },
+        data: { status: newStatus },
       });
       res.status(STATUS.OK).json({
         success: true,
         messaege: "Update booking status successfully",
-        data:  updateStatus ,
+        status,
       });
     } catch (err) {
       console.log(err);
@@ -187,9 +196,9 @@ export default class bookingController {
 
   static async cancelBooking(req, res) {
     try {
-      const bookingId = Number(req.params.id);
+      const bookingId = req.params.id;
       const { cancel } = req.body;
-      const prisma = new PrismaClient();
+      console.log(bookingId);
       const cancelStatus = await prisma.booking.update({
         where: { id: bookingId },
         data: { status: cancel },
@@ -197,7 +206,7 @@ export default class bookingController {
       res.status(STATUS.OK).json({
         success: true,
         messaege: "Booking cancelled",
-        data:  cancelStatus ,
+        data: cancelStatus,
       });
     } catch (err) {
       console.log(err);
@@ -208,6 +217,165 @@ export default class bookingController {
       res
         .status(STATUS.INTERNAL_SERVER_ERROR)
         .json({ messaege: "Server Error" });
+    }
+  }
+
+  static async bookingHistory(req, res) {
+    try {
+      const history = await prisma.booking.findMany({
+        where: { status: "CONFIRMED" },
+        include: {
+          property: true,
+          property: { include: { propertyType: true } },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
+      });
+      if (!history && history.length === 0) {
+        return res
+          .status(STATUS.NOT_FOUND)
+          .json({ messaege: "No booking history" });
+      }
+      res.status(STATUS.OK).json({
+        success: true,
+        messaege: "Get booking history successfully",
+        history,
+      });
+    } catch (err) {
+      console.log(err);
+      res
+        .status(STATUS.INTERNAL_SERVER_ERROR)
+        .json({ messaege: "Server Error" });
+    }
+  }
+
+  static async checkIn(req, res) {
+    try {
+      // console.log("Check in: ", req.body)
+      const bookingId = req.params.id;
+      const booking = await prisma.booking.findUnique({
+        where: { id: bookingId },
+        include: { property: true },
+      });
+      if (!booking) {
+        return res
+          .status(STATUS.NOT_FOUND)
+          .json({ message: "Check-int not found" });
+      }
+      if (booking.status === "CHECKED_IN") {
+        return res.status(STATUS.BAD_REQUEST).json({
+          message: "Booking is already checked in",
+        });
+      }
+      if (booking.status !== "PAID") {
+        return res
+          .status(STATUS.BAD_REQUEST)
+          .json({ message: "Booking is not paid yet" });
+      }
+      if (booking.property.status === "FULL") {
+        return res
+          .status(STATUS.BAD_REQUEST)
+          .json({ message: "Room is already occupied" });
+      }
+
+      const [updatedBooking, updatedProperty] = await prisma.$transaction([
+        prisma.booking.update({
+          where: { id: bookingId },
+          data: {
+            status: "CHECKED_IN",
+          },
+        }),
+
+        prisma.property.update({
+          where: { id: booking.propertyId },
+          data: {
+            status: "FULL",
+          },
+        }),
+      ]);
+
+      res.status(STATUS.OK).json({
+        success: true,
+        message: "Check-in successful",
+        data: { updatedBooking, updatedProperty },
+      });
+    } catch (err) {
+      console.log(err);
+      res
+        .status(STATUS.INTERNAL_SERVER_ERROR)
+        .json({ messaege: "Server Error" });
+    }
+  }
+
+  static async checkOut(req, res) {
+    try {
+      const bookingId = req.params.id;
+      // Validate booking ID
+      if (!bookingId) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Booking ID is required" });
+      }
+
+      // Find booking
+      const booking = await prisma.booking.findUnique({
+        where: { id: bookingId },
+      });
+
+      if (!booking) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Booking not found" });
+      }
+
+      // Prevent double check-out
+      if (booking.status === "CHECKED_OUT") {
+        return res
+          .status(400)
+          .json({ success: false, message: "Already checked out" });
+      }
+      // Check booking status
+      if (booking.status !== "CHECKED_IN") {
+        return res.status(STATUS.BAD_REQUEST).json({
+          success: false,
+          message: "Cannot check out before check-in",
+        });
+      }
+
+      // Update booking
+      const [updatedBooking] = await prisma.$transaction([
+        prisma.booking.update({
+          where: { id: booking.id },
+          data: {
+            status: "CHECKED_OUT",
+          },
+          include: {
+            property: true,
+            payment: true,
+          },
+        }),
+        prisma.property.update({
+          where: { id: booking.propertyId },
+          data: { status: "AVAILABLE" },
+        }),
+      ]);
+
+      res.status(200).json({
+        success: true,
+        message: "Checked out successfully",
+        updatedBooking,
+      });
+    } catch (err) {
+      console.log(err);
+      res
+        .status(STATUS.INTERNAL_SERVER_ERROR)
+        .json({ messaege: "Server error" });
     }
   }
 }

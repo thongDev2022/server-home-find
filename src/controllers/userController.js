@@ -1,31 +1,30 @@
 import STATUS from "../service/statusCodes.js";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../service/prismaClient.js";
+// import { PrismaClient } from "@prisma/client";
 
 export default class userController {
   //Select all user method
   static async getAllUsers(req, res) {
     try {
-      const prisma = new PrismaClient();
+      // const prisma = new PrismaClient();
       const users = await prisma.user.findMany({
         select: {
-          user_id: true,
-          username: true,
+          id: true,
+          name: true,
           email: true,
-          phoneNumber: true,
+          phone: true,
           role: true,
         },
       });
       if (!users || users.length === 0) {
-        return res.status(STATUS.NOT_FOUND).json({
-          success: false,
-          message: "No users found!",
-          data: null,
-        });
+        return res
+          .status(STATUS.NOT_FOUND)
+          .json({ message: "No users found!" });
       }
       res.status(STATUS.OK).json({
         success: true,
         message: "Selected All Users Successfully",
-        data: { users },
+        users,
       });
       //   res.send("Hello get all user");
     } catch (err) {
@@ -39,32 +38,27 @@ export default class userController {
     try {
       //code
       const user_id = req.params.id;
-      const prisma = new PrismaClient();
       const user = await prisma.user.findFirst({
         where: {
-          user_id,
+          id: user_id,
         },
         select: {
-          user_id: true,
-          username: true,
+          id: true,
+          name: true,
           email: true,
-          phoneNumber: true,
+          phone: true,
           role: true,
           createdAt: true,
           updatedAt: true,
         },
       });
       if (!user) {
-        res.status(STATUS.NOT_FOUND).json({
-          success: false,
-          message: "no user found",
-          data: null,
-        });
+        res.status(STATUS.NOT_FOUND).json({ message: "no user found" });
       }
       res.status(STATUS.OK).json({
         success: true,
         message: "Selected One User Successfully",
-        data: { user },
+        user,
       });
     } catch (err) {
       console.log(err);
@@ -121,7 +115,6 @@ export default class userController {
     try {
       //code
       const user_id = req.params.id;
-      const prisma = new PrismaClient();
       const existingUser = await prisma.user.findUnique({
         where: { user_id },
       });
@@ -159,6 +152,33 @@ export default class userController {
       res
         .status(STATUS.INTERNAL_SERVER_ERROR)
         .json({ message: "Server Error" });
+    }
+  }
+
+  //Get all tenant
+  static async getAllTenants(req, res) {
+    try {
+      const tenants = await prisma.user.findMany({
+        where: { role: "TENANT" },
+        include: {
+          bookings: {
+            include: {
+              property: true,
+            },
+          },
+        },
+      });
+
+      res.status(STATUS.OK).json({
+        success: true,
+        message: "Get all tenants successfully",
+        tenants,
+      });
+    } catch (err) {
+      console.error(err);
+      res
+        .status(STATUS.INTERNAL_SERVER_ERROR)
+        .json({ success: false, message: "Server Error" });
     }
   }
 }

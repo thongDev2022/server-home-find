@@ -9,111 +9,166 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
+// ---------------------- USER ----------------------
 model User {
-  user_id     String    @id @default(uuid())
-  username    String
-  email       String    @unique
-  password    String
-  phoneNumber Int
-  role        Role @default(user) // user, admin , owner
-  profile     String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  bookings    Booking[]
-}
-
-model Apartment {
-  id            Int             @id @default(autoincrement())
-  ownerId       Int?
-  title         String
-  description   String
-  address       Address[]
-  images        Image[]
-  price         Float
-  priceBooking  Float
-  status        ApartmentStatus @default(available) // available, booked, full, under_maintenance
-  apartmentType String
-  badRoom       Int
-  convenience   Json
-  otherService  Json
-  bookings      Booking[] 
-  categoryId    Int?
-  category      Category?       @relation(fields: [categoryId], references: [id])
-  createdBy     String          @default("owner")
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  paymentStatus PaymentStatus   @default(unpaid)// paid, unpaid, pending
-}
-
-model Category {
-  id          Int         @id @default(autoincrement())
-  name        String      @unique
-  description String?
-  apartments  Apartment[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-}
-
-model Booking {
-  id          Int           @id @default(autoincrement())
-  userId      String
-  apartmentId Int
-  startDate   DateTime
-  endDate     DateTime?
-  totalPrice  Float         @default(0.0)
-  status      BookingStatus @default(pending) // pending, confirmed, cancelled 
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  user        User          @relation(fields: [userId], references: [user_id], onDelete: Cascade)
-  apartment   Apartment     @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-}
-
-model Address {
-  id          Int       @id @default(autoincrement())
-  village     String
-  district    String
-  province    String
-  apartmentId Int       @unique
-  apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-}
-
-model Image {
-  id          Int       @id @default(autoincrement())
-  apartmentId Int
-  url         String
-  public_id    String
-  apartment   Apartment @relation(fields: [apartmentId], references: [id])
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id         String     @id @default(auto()) @map("_id") @db.ObjectId
+  name       String
+  email      String     @unique
+  phone      String
+  role       Role       @default(TENANT)
+  password   String
+  properties Property[] @relation("UserProperties")
+  bookings   Booking[]  @relation("UserBookings")
+  problems   Problem[]  @relation("UserProblems")
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 }
 
 enum Role {
-  user
-  admin
-  owner
+  OWNER
+  TENANT
+  ADMIN
 }
 
-enum ApartmentStatus {
-  available
-  booked
-  full
-  under_maintenance
+// ---------------------- PROPERTY ----------------------
+model Property {
+  id             String         @id @default(auto()) @map("_id") @db.ObjectId
+  prefix         String
+  startNumber    Int
+  endNumber      Int            @unique
+  rentPrice      Float
+  deposit        Float
+  size           String?
+  floor          Int?
+  details        String?
+  propertyTypeId String         @db.ObjectId
+  propertyType   PropertyType   @relation("PropertyTypeProperties", fields: [propertyTypeId], references: [id])
+  images         Image[]        @relation("PropertyImages")
+  image          Json?
+  location       String
+  address        Address?       @relation("PropertyAddresses")
+  priceType      String
+  status         PropertyStatus @default(AVAILABLE)
+  moreDetails    String?
+  owner          User           @relation("UserProperties", fields: [ownerId], references: [id])
+  ownerId        String         @db.ObjectId
+  bookings       Booking[]      @relation("PropertyBookings")
+  problems       Problem[]      @relation("PropertyProblems")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+enum PropertyStatus {
+  AVAILABLE
+  BOOKED
+  FULL
+  UNDER_MAINTENANCE
+}
+
+// ---------------------- PROPERTY TYPE ----------------------
+model PropertyType {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  name        String     @unique
+  description String?
+  properties  Property[] @relation("PropertyTypeProperties")
+}
+
+// ---------------------- ADDRESS ----------------------
+model Address {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  village    String
+  district   String
+  province   String
+  property   Property @relation("PropertyAddresses", fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyId String   @unique @db.ObjectId
+}
+
+// ---------------------- IMAGE ----------------------
+model Image {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  asset_id   String
+  url        String
+  public_id  String
+  format     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  property   Property @relation("PropertyImages", fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyId String   @db.ObjectId
+}
+
+// ---------------------- BOOKING ----------------------
+model Booking {
+  id         String        @id @default(auto()) @map("_id") @db.ObjectId
+  property   Property      @relation("PropertyBookings", fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyId String        @db.ObjectId
+  user       User          @relation("UserBookings", fields: [userId], references: [id], onDelete: Cascade)
+  userId     String        @db.ObjectId
+  checkIn    DateTime
+  payment    Payment?
+  checkOut   DateTime
+  status     BookingStatus @default(PENDING)
+  totalPrice Float
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
 }
 
 enum BookingStatus {
-  pending
-  confirmed
-  cancelled
+  PENDING
+  CONFIRMED
+  CANCELLED
+  PAID
+  CHECKED_IN
+  CHECKED_OUT
+}
+
+// ---------------------- PAYMENT ----------------------
+model Payment {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  booking       Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookingId     String        @unique @db.ObjectId
+  amount        Float
+  paymentMethod PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  transactionId String? // ID จาก Payment Gateway เช่น Stripe / Omise
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+enum PaymentMethod {
+  CARD
+  BANK
+  CASH
+  QR
 }
 
 enum PaymentStatus {
-  paid
-  unpaid
-  pending
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// ---------------------- Problem ----------------------
+model Problem {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  propertyNumber String   @db.String
+  floor          Int
+  problem        String
+  phone          String
+  status         Status   @default(PENDING)
+  user           User     @relation("UserProblems", fields: [userId], references: [id])
+  userId         String   @db.ObjectId
+  property       Property @relation("PropertyProblems", fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyId     String   @db.ObjectId
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+enum Status {
+  PENDING
+  IN_PROGRESS
+  RESOLVED
 }

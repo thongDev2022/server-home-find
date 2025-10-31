@@ -1,8 +1,8 @@
 // src/services/cloudinaryService.js
 import dotenv from "dotenv";
 import { v2 as cloudinary } from "cloudinary";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
-import multer from "multer";
+// import { CloudinaryStorage } from "multer-storage-cloudinary";
+// import multer from "multer";
 
 dotenv.config();
 
@@ -18,15 +18,15 @@ class CloudinaryService {
     this.cloudinary = cloudinary;
 
     // Configure Multer storage for Cloudinary
-    this.storage = new CloudinaryStorage({
-      cloudinary: this.cloudinary,
-      params: {
-        folder: "apartments",
-        allowed_formats: ["jpg", "png", "jpeg"],
-      },
-    });
+    // this.storage = new CloudinaryStorage({
+    //   cloudinary: this.cloudinary,
+    //   params: {
+    //     folder: "apartments",
+    //     allowed_formats: ["jpg", "png", "jpeg"],
+    //   },
+    // });
 
-    this.upload = multer({ storage: this.storage });
+    // this.upload = multer({ storage: this.storage });
   }
 
   // Single upload middleware
@@ -35,9 +35,9 @@ class CloudinaryService {
   // }
 
   // Multiple upload middleware
-  multipleUpload(fieldName = "images", maxCount = 5) {
-    return this.upload.array(fieldName, maxCount);
-  }
+  // multipleUpload(fieldName = "images", maxCount = 4) {
+  //   return this.upload.array(fieldName, maxCount);
+  // }
 }
 
 export default new CloudinaryService();

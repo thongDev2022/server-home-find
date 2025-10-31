@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import prisma from "../service/prismaClient.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import STATUS from "../service/statusCodes.js";
@@ -7,61 +7,63 @@ export default class authController {
   //Register method
   static async Register(req, res) {
     try {
-      //code
-      const { username, email, password, phoneNumber } = req.body;
-      //Validate inputs
-      if (!username)
-        return res
-          .status(STATUS.BAD_REQUEST)
-          .json({ message: "Username is required!" });
-      if (!email)
-        return res
-          .status(STATUS.BAD_REQUEST)
-          .json({ message: "Email is required!" });
+      const { name, email, phone, password } = req.body;
+
+      // Validate inputs
+      if (!name?.trim())
+        return res.status(400).json({ message: "Name is required!" });
+      if (!email?.trim())
+        return res.status(400).json({ message: "Email is required!" });
+      if (!phone?.trim())
+        return res.status(400).json({ message: "Phone number is required!" });
       if (!password)
-        return res
-          .status(STATUS.BAD_REQUEST)
-          .json({ message: "Password is required!" });
-      if (!phoneNumber)
-        return res
-          .status(STATUS.BAD_REQUEST)
-          .json({ message: "Phone number is required!" });
+        return res.status(400).json({ message: "Password is required!" });
 
-      //Check if user already exists
-      const prisma = new PrismaClient();
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email))
+        return res.status(400).json({ message: "Invalid email format!" });
+
+      // Password validation
+      if (password.length < 6)
+        return res
+          .status(400)
+          .json({ message: "Password must be at least 6 characters long!" });
+
+      // Check existing user
       const existingUser = await prisma.user.findUnique({
-        where: { email },
+        where: { email: email.toLowerCase() },
       });
-      if (existingUser) {
-        return res
-          .status(STATUS.CONFLICT)
-          .json({ message: "User already exists!" });
-      }
+      if (existingUser)
+        return res.status(409).json({ message: "User already exists!" });
 
-      //hash password
+      // Hash password
       const hashedPassword = await bcrypt.hash(password, 10);
-      if (!hashedPassword) {
-        return res
-          .status(STATUS.UNPROCESSABLE_ENTITY)
-          .json({ message: "Error hashing password!" });
-      }
-      //Create user in the database
+
+      // Create user
       const user = await prisma.user.create({
         data: {
-          username,
+          name: name.trim(),
           email: email.toLowerCase(),
+          phone: phone.trim(),
           password: hashedPassword,
-          phoneNumber: Number(phoneNumber),
         },
       });
-      res.status(STATUS.CREATED).json({
+
+      // Hide password in response
+      const { password: _, ...safeUser } = user;
+
+      res.status(201).json({
         success: true,
         message: "User registered successfully!",
-        data: { user },
+        user: safeUser,
       });
     } catch (err) {
-      console.log(err);
-      res.statusS(STATUS.CREATED).json({ message: "Server Error" });
+      console.error("Register Error:", err);
+      if (err.code === "P2002") {
+        return res.status(409).json({ message: "Email already exists!" });
+      }
+      res.status(500).json({ message: "Server Error" });
     }
   }
 
@@ -81,7 +83,6 @@ export default class authController {
           .json({ message: "Password is required!" });
 
       //Check if user exists
-      const prisma = new PrismaClient();
       const user = await prisma.user.findUnique({
         where: { email },
       });
@@ -101,12 +102,13 @@ export default class authController {
 
       //Generate JWT token
       const payload = {
-        userId: user.user_id,
-        username: user.username,
+        id: user.id,
+        name: user.name,
         email: user.email,
+        role: user.role,
       };
       const token = jwt.sign(payload, process.env.JWT_SECRET, {
-        expiresIn: "3h",
+        expiresIn: "4h",
       });
       if (!token) {
         return res
@@ -116,10 +118,8 @@ export default class authController {
       res.status(STATUS.OK).json({
         success: true,
         message: "Login successful!",
-        data: {
-          payload,
-          token,
-        },
+        data: payload,
+        token,
       });
     } catch (err) {
       console.log(err);
@@ -132,13 +132,12 @@ export default class authController {
   //Current user method
   static async currentUser(req, res) {
     try {
-      const prisma = new PrismaClient();
       const user = await prisma.user.findFirst({
         where: { email: req.user.email },
         select: {
-          username: true,
+          name: true,
           email: true,
-          phoneNumber: true,
+          phone: true,
           role: true,
         },
       });
@@ -151,7 +150,7 @@ export default class authController {
       res.status(STATUS.OK).json({
         success: true,
         message: "Get current user successfully",
-        data: { user },
+        data: user,
       });
     } catch (err) {
       console.log(err);

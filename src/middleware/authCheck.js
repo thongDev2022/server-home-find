@@ -1,9 +1,6 @@
 import jwt from "jsonwebtoken";
 import STATUS from "../service/statusCodes.js";
-import { PrismaClient } from "@prisma/client";
-
-
-const prisma = new PrismaClient();
+import prisma from "../service/prismaClient.js";
 
 export const authCheck = async (req, res, next) => {
   try {
@@ -31,12 +28,11 @@ export const authCheck = async (req, res, next) => {
 export const adminCheck = async (req, res, next) => {
   try {
     const { email } = req.user;
-    // const prisma = new PrismaClient();
     const user = await prisma.user.findFirst({
       where: { email: email },
     });
 
-    if (!user || user.role !== "admin") {
+    if (!user || user.role !== "ADMIN") {
       return res
         .status(STATUS.FORBIDDEN)
         .json({ message: "Only admin can do this process" });
